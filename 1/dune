@@ -2,3 +2,8 @@
  (name easy)
  (libraries core)
  (modules easy))
+
+(executable
+ (name hard)
+ (libraries core)
+ (modules hard))
