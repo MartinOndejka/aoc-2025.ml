@@ -1,0 +1,4 @@
+(executable
+ (name easy)
+ (libraries core)
+ (modules easy))
