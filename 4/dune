@@ -1,0 +1,13 @@
+(executable
+ (name easy)
+ (libraries core)
+ (modules easy)
+ (preprocess
+  (pps ppx_jane)))
+
+(executable
+ (name hard)
+ (libraries core)
+ (modules hard)
+ (preprocess
+  (pps ppx_jane)))
