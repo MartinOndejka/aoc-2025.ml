@@ -1,8 +1,12 @@
 open Core
 
-type pos = int * int * int [@@deriving sexp]
+module Pos = struct
+  type t = int * int * int [@@deriving sexp, compare, hash]
+end
 
-let rec parse_input () : pos list =
+module PosHTbl = Hashtbl.Make (Pos)
+
+let rec parse_input () : Pos.t list =
   match In_channel.(input_line stdin) with
   | None -> []
   | Some line ->
@@ -16,33 +20,32 @@ let distance (x1, y1, z1) (x2, y2, z2) =
   +. (Float.of_int (y1 - y2) ** 2.0)
   +. (Float.of_int (z1 - z2) ** 2.0)
 
-module Int3H = Hashtbl.Make (struct
-  type t = int * int * int [@@deriving compare, sexp, hash]
-end)
+let merge_circuits h a b =
+  PosHTbl.map_inplace h ~f:(fun x -> if x = max a b then min a b else x)
 
-let rec pair_vertices ~target_size h ?(counter = 0) = function
+let rec min_spanning_tree ~target_size h ?(counter = 0) = function
   | [] -> failwith "Unreachable"
-  | (_d, a, b) :: rest -> (
-      let check () =
-        Int3H.length h = target_size && Int3H.for_all h ~f:(fun x -> x = 1)
+  | (a, b) :: rest -> (
+      let done_or_next counter rest =
+        if
+          PosHTbl.length h = target_size
+          && PosHTbl.for_all h ~f:(fun x -> x = 1)
+        then fst3 a * fst3 b
+        else min_spanning_tree ~target_size h ~counter rest
       in
-      match (Int3H.find h a, Int3H.find h b) with
+      match (PosHTbl.find h a, PosHTbl.find h b) with
       | Some a_circuit, Some b_circuit ->
-          Int3H.map_inplace h ~f:(fun x ->
-              if x = max a_circuit b_circuit then min a_circuit b_circuit else x);
-          if check () then fst3 a * fst3 b
-          else pair_vertices ~target_size h ~counter rest
+          merge_circuits h a_circuit b_circuit;
+          done_or_next counter rest
       | None, None ->
           let counter = counter + 1 in
-          Int3H.set h ~key:a ~data:counter;
-          Int3H.set h ~key:b ~data:counter;
-          if check () then fst3 a * fst3 b
-          else pair_vertices ~target_size h ~counter rest
+          PosHTbl.set h ~key:a ~data:counter;
+          PosHTbl.set h ~key:b ~data:counter;
+          done_or_next counter rest
       | Some circuit, None | None, Some circuit ->
-          Int3H.set h ~key:a ~data:circuit;
-          Int3H.set h ~key:b ~data:circuit;
-          if check () then fst3 a * fst3 b
-          else pair_vertices ~target_size h ~counter rest)
+          PosHTbl.set h ~key:a ~data:circuit;
+          PosHTbl.set h ~key:b ~data:circuit;
+          done_or_next counter rest)
 
 let () =
   let vertices = parse_input () in
@@ -52,7 +55,10 @@ let () =
     |> List.filter ~f:(fun (d, _, _) -> Float.(d <> 0.))
     |> List.dedup_and_sort ~compare:(fun (d1, _, _) (d2, _, _) ->
            Float.compare d1 d2)
+    |> List.map ~f:(fun (_d, a, b) -> (a, b))
   in
-  let h = Int3H.create () in
-  let result = pair_vertices ~target_size:(List.length vertices) h edges in
+  let result =
+    min_spanning_tree ~target_size:(List.length vertices) (PosHTbl.create ())
+      edges
+  in
   printf !"Result: %d\n" result
