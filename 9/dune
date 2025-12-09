@@ -10,4 +10,5 @@
  (libraries core)
  (modules hard)
  (preprocess
-  (pps ppx_jane)))
+  (pps ppx_jane))
+ (flags -w -32))
