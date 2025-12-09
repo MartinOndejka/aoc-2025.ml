@@ -5,21 +5,14 @@ module Pos = struct
 end
 
 module Grid = struct
-  type allowed = bool [@@deriving sexp]
-  type t = allowed array array [@@deriving sexp]
+  type t = bool array array [@@deriving sexp]
 
   let set grid (x, y) value = grid.(x).(y) <- value
   let get grid (x, y) = try Some grid.(x).(y) with _ -> None
+  let get_exn grid (x, y) = grid.(x).(y)
   let make m n = Array.make_matrix ~dimx:m ~dimy:n false
 
-  let pp grid =
-    Array.iter grid ~f:(fun row ->
-        print_endline
-          (Array.to_list row
-          |> List.map ~f:(fun b -> if b then '#' else '.')
-          |> String.of_char_list))
-
-  let fill grid =
+  let fill_bfs grid =
     let module H = Hashtbl.Make (Pos) in
     let visited = H.create () in
     let start = (0, 0) in
@@ -40,6 +33,38 @@ module Grid = struct
         Array.iteri row ~f:(fun y cell ->
             if Bool.(cell = false) && not (H.mem visited (x, y)) then
               set grid (x, y) true))
+end
+
+module Prefix_sums = struct
+  type t = int array array [@@deriving sexp]
+
+  let get prefix_grid (x, y) = try prefix_grid.(x).(y) with _ -> 0
+  let make m n = Array.make_matrix ~dimx:m ~dimy:n 0
+
+  let calculate (grid : Grid.t) =
+    let m = Array.length grid in
+    let n = Array.length grid.(0) in
+    let prefix_grid = make m n in
+    for x = 0 to m - 1 do
+      for y = 0 to n - 1 do
+        prefix_grid.(x).(y) <-
+          (if Grid.get_exn grid (x, y) then 1 else 0)
+          + get prefix_grid (x - 1, y)
+          + get prefix_grid (x, y - 1)
+          - get prefix_grid (x - 1, y - 1)
+      done
+    done;
+    prefix_grid
+
+  let get_sum prefix_grid (x1, y1) (x2, y2) =
+    let x = min x1 x2 in
+    let y = min y1 y2 in
+    let width = abs (x2 - x1) in
+    let height = abs (y2 - y1) in
+    get prefix_grid (x + width, y + height)
+    - get prefix_grid (x + width, y - 1)
+    - get prefix_grid (x - 1, y + height)
+    + get prefix_grid (x - 1, y - 1)
 end
 
 module Mapping = struct
@@ -106,23 +131,6 @@ let line (x1, y1) (x2, y2) =
     |> List.map ~f:(fun x -> (x, y1))
   else failwith "Invalid line"
 
-let rectangle (x1, y1) (x2, y2) =
-  let x = min x1 x2 in
-  let y = min y1 y2 in
-  let width = abs (x2 - x1) in
-  let height = abs (y2 - y1) in
-  (* List.cartesian_product
-     (List.range x (x + width) ~stride:1)
-     (List.range y (y + height) ~stride:1) *)
-  (* Luckily only outline works, otherwise we would need prefix sums *)
-  List.concat
-    [
-      line (x, y) (x + width, y);
-      line (x, y) (x, y + height);
-      line (x + width, y) (x + width, y + height);
-      line (x, y + height) (x + width, y + height);
-    ]
-
 let () =
   let vertices = parse_input () in
   let xs = List.map vertices ~f:(fun (x, _) -> x) in
@@ -136,17 +144,18 @@ let () =
       let b = Mapping.to_compressed mapping b in
       List.iter (line a b) ~f:(fun pos -> Grid.set grid pos true));
 
-  Grid.fill grid;
+  Grid.fill_bfs grid;
+
+  let prefix_sums = Prefix_sums.calculate grid in
 
   let result, _, _ =
     List.cartesian_product vertices vertices
     |> List.map ~f:(fun (a, b) -> (size a b, a, b))
     |> List.sort ~compare:(fun (a, _, _) (b, _, _) -> Int.compare b a)
+    |> List.map ~f:(fun (s, a, b) ->
+           (s, Mapping.to_compressed mapping a, Mapping.to_compressed mapping b))
     |> List.find ~f:(fun (s, a, b) ->
-           let a = Mapping.to_compressed mapping a in
-           let b = Mapping.to_compressed mapping b in
-           List.for_all (rectangle a b) ~f:(fun pos ->
-               match Grid.get grid pos with Some true -> true | _ -> false))
+           size a b = Prefix_sums.get_sum prefix_sums a b)
     |> Option.value_exn ~message:"No result"
   in
   printf !"Result: %d\n" result
