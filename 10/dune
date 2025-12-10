@@ -8,7 +8,7 @@
 
 (executable
  (name hard)
- (libraries core)
+ (libraries core z3)
  (modules hard)
  (preprocess
   (pps ppx_jane))
